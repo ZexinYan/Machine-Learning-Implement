@@ -1,6 +1,15 @@
+from sklearn.metrics import accuracy_score
 import pandas as pd
 import numpy as np
+import math
 import json
+
+'''
+Machine Learning Model-Naive Bayse
+feature_type: represent the type of features
+'continuous': if features are continuous.
+'discrete': if features are discrete.
+'''
 
 
 class Naive_Bayse():
@@ -27,7 +36,12 @@ class Naive_Bayse():
         self._compute_prior_prob()
         if self.feature_type == 'discrete':
             self._construct_model_discrete()
+        else:
+            self._construct_model_continuous()
 
+    '''
+    compute the prior probability.
+    '''
     def _compute_prior_prob(self):
         for each_class in self.classse:
             self.prior_prob[each_class] = (self.y[self.y == each_class].shape[0] + 1) / (self.y.shape[0] + len(self.classse))
@@ -43,29 +57,52 @@ class Naive_Bayse():
                     self.parameter[each_feature + '=' + str(each_value) + '|' + 'label=' + str(each_class)] \
                         = numerator / denominator
 
-    def predict(self, x):
-        def _predict_helper(_x):
-            score = {}
-            label = None
-            max_score = 0
+    def _construct_model_continuous(self):
+        for each_feature in self.features:
+            self.parameter[each_feature] = {}
             for each_class in self.classse:
-                score[each_class] = self.prior_prob[each_class]
-                for each_feature in self.features:
-                    score[each_class] *= self.parameter[each_feature + '=' + str(_x[each_feature])
-                                                        + '|' + 'label=' + str(each_class)]
-                if score[each_class] > max_score:
-                    label = each_class
-                    max_score = score[each_class]
-            return label
+                self.parameter[each_feature][each_class] = {}
+                self.parameter[each_feature][each_class]['mean'] \
+                    = np.mean(self.data[self.data['class'] == each_class][each_feature])
+                self.parameter[each_feature][each_class]['var'] = np.var(self.data[self.data['class'] == each_class][each_feature])
 
-        return x.apply(_predict_helper, axis=1)
+    def _compute_gaussian(self, x, mean, var):
+        return np.exp(-1 * math.pow(x - mean, 2) / (2 * var)) / (math.sqrt(2 * math.pi * var))
 
+    def predict(self, x):
+        if self.feature_type == 'discrete':
+            def _predict_helper(_x):
+                score = {}
+                label = None
+                max_score = 0
+                for each_class in self.classse:
+                    score[each_class] = self.prior_prob[each_class]
+                    for each_feature in self.features:
+                        score[each_class] *= self.parameter[each_feature + '=' + str(_x[each_feature])
+                                                            + '|' + 'label=' + str(each_class)]
+                    if score[each_class] > max_score:
+                        label = each_class
+                        max_score = score[each_class]
+                return label
 
-if __name__ == '__main__':
-    import pandas as pd
-    train_data = pd.read_csv('data.csv', index_col=0)
+            return x.apply(_predict_helper, axis=1)
+        else:
+            def _predict_helper(_x):
+                score = {}
+                label = None
+                max_score = 0
+                for each_class in self.classse:
+                    score[each_class] = self.prior_prob[each_class]
+                    for each_feature in self.features:
+                        score[each_class] *= self._compute_gaussian(_x[each_feature],
+                                                                    self.parameter[each_feature][each_class]['mean'],
+                                                                    self.parameter[each_feature][each_class]['var'])
+                    if score[each_class] > max_score:
+                        label = each_class
+                        max_score = score[each_class]
+                return label
+            return x.apply(_predict_helper, axis=1)
 
-    model = Naive_Bayse(feature_type='discrete')
-    model.fit(train_data[['factor1', 'factor2']], train_data['RTN'])
-    pred = model.predict(train_data[['factor1', 'factor2']])
-    print(pred)
+    def score(self):
+        pred = self.predict(self.X)
+        return accuracy_score(self.y, pred)
